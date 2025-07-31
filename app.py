@@ -4,8 +4,9 @@ from io import BytesIO
 import ast
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
 st.title("📄 Dictionary to DOCX / PDF Converter")
 
@@ -25,9 +26,9 @@ if st.button("📄 Generate DOCX and PDF"):
         else:
             # --- Generate DOCX ---
             doc = Document()
-            doc.add_heading(f"Attendance Report", 0)
+            doc.add_heading("Attendance Report", 0)
             doc.add_paragraph(f'Date: {da}\nSubject: {lec}')
-            
+
             table = doc.add_table(rows=1, cols=len(data[0]))
             table.style = 'Table Grid'
             hdr_cells = table.rows[0].cells
@@ -43,33 +44,43 @@ if st.button("📄 Generate DOCX and PDF"):
             doc.save(doc_buffer)
             doc_buffer.seek(0)
 
-            # --- Generate PDF ---
+            # --- Generate PDF using Platypus ---
             pdf_buffer = BytesIO()
-            p = canvas.Canvas(pdf_buffer, pagesize=A4)
-            width, height = A4
-            p.setFont("Helvetica-Bold", 14)
-            p.drawString(100, height - 50, f"Attendance Report")
-            p.setFont("Helvetica", 12)
-            p.drawString(100, height - 70, f"Date: {da}")
-            p.drawString(100, height - 90, f"Subject: {lec}")
+            pdf_doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+            elements = []
+            styles = getSampleStyleSheet()
 
-            y = height - 120
+            # Title and metadata
+            elements.append(Paragraph("<b>Attendance Report</b>", styles['Title']))
+            elements.append(Paragraph(f"<b>Date:</b> {da}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Subject:</b> {lec}", styles['Normal']))
+            elements.append(Spacer(1, 12))
+
+            # Table data
             headers = list(data[0].keys())
-            p.setFont("Helvetica-Bold", 11)
-            for i, h in enumerate(headers):
-                p.drawString(50 + i*100, y, str(h))
-
-            y -= 20
-            p.setFont("Helvetica", 10)
+            table_data = [headers]
             for row in data:
-                for i, val in enumerate(row.values()):
-                    p.drawString(50 + i*100, y, str(val))
-                y -= 20
-                if y < 50:  # Create new page if space runs out
-                    p.showPage()
-                    y = height - 50
+                table_data.append([str(val) for val in row.values()])
 
-            p.save()
+            # Create table with styles and full-width column layout
+            page_width = A4[0] - 2 * 40  # leave 40pt margin on each side
+            num_cols = len(headers)
+            col_widths = [page_width / num_cols] * num_cols  # equal width per column
+
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ]))
+
+            elements.append(table)
+            pdf_doc.build(elements)
             pdf_buffer.seek(0)
 
             # --- Download Buttons ---
